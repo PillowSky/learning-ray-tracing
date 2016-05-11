@@ -1,6 +1,7 @@
 #include <iostream>
 #include <random>
 #include <glm/glm.hpp>
+#include <Magick++.h>
 
 using namespace std;
 using namespace glm;
@@ -137,19 +138,16 @@ dvec3 radiance(const Ray& ray, int depth) {
 	}
 }
 
-inline double clamp(double x){ return x<0 ? 0 : x>1 ? 1 : x; }
-inline int toInt(double x){ return int(pow(clamp(x),1/2.2)*255+.5); }
-
 int main(int argc, char* argv[]) {
 	int width = 800;
 	int height = 600;
-	int sample = 64;
+	int sample = 1;
 
 	Ray camera(dvec3(50,50,295.6), normalize(dvec3(0,-0.042612,-1)));
 	dvec3 cx(width * .5135 / height, 0, 0);
 	dvec3 cy = normalize(cross(cx, camera.direction)) * 0.5135;
+	dvec3* buffer = new dvec3[width * height];
 	dvec3 r;
-	dvec3* c = new dvec3[width * height];
 
 	#pragma omp parallel for schedule(dynamic, 1) private(r)
 	for (int y = 0; y < height; y++) {
@@ -164,18 +162,18 @@ int main(int argc, char* argv[]) {
 						double dy = r2 < 1 ? sqrt(r2) - 1 : 1 - sqrt(2 - r2);
 						dvec3 d = cx*( ( (sx + 0.5 + dx)/2 + x)/width - 0.5) +
 								cy*( ( (sy + 0.5 + dy)/2 + y)/height - 0.5) + camera.direction;
-						r += radiance(Ray(camera.origin + d * 140.0, normalize(d)), 0) * (1.0/sample);
+						r += radiance(Ray(camera.origin + d * 140.0, normalize(d)), 0) * (1.0 / sample);
 					}
-					c[i] += dvec3(clamp(r.x), clamp(r.y), clamp(r.z)) * 0.25;
+					buffer[i] += clamp(r, dvec3(0, 0, 0), dvec3(1, 1, 1)) * 0.25;
 				}
 			}
 		}
 	}
 	fprintf(stderr, "\n");
 
-	FILE *f = fopen("image.ppm", "w");
-	fprintf(f, "P3\n%d %d\n%d\n", width, height, 255);
-	for (int i=0; i < width * height; i++) {
-		fprintf(f,"%d %d %d ", toInt(c[i].x), toInt(c[i].y), toInt(c[i].z));
-	}
+	Magick::Image image(width, height, "RGB", Magick::DoublePixel, buffer);
+	image.gamma(1.5);
+	image.write("image.png");
+
+	return EXIT_SUCCESS;
 }
